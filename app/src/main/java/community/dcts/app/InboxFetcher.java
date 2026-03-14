@@ -123,6 +123,9 @@ public class InboxFetcher {
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setDoOutput(true);
 
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+
                 JSONObject creds = getAccountCredentials(host);
                 if (creds == null) return;
 
