@@ -1,6 +1,8 @@
 package community.dcts.app;
 
+import android.app.Activity;
 import android.content.Context;
+import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
@@ -9,10 +11,17 @@ import org.json.JSONObject;
 public class JSBridge {
     private final WebView webView;
     private final dSyncSign signer;
+    private final Activity activity;
+    private volatile String currentUrl = "";
 
-    public JSBridge(WebView webView, Context context) {
+    public void updateUrl(String url) {
+        this.currentUrl = url;
+    }
+
+    public JSBridge(WebView webView, Activity activity) {
         this.webView = webView;
-        this.signer = new dSyncSign(context);
+        this.activity = activity;
+        this.signer = new dSyncSign(activity);
     }
 
     @JavascriptInterface
@@ -26,7 +35,74 @@ public class JSBridge {
     }
 
     @JavascriptInterface
+    public String saveAccount(String json) {
+        try {
+            JSONObject account = new JSONObject(json);
+            Accounts accounts = new Accounts(webView.getContext());
+            accounts.save(currentUrl, account);
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "saveAccount failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public void pickAccount() {
+        activity.runOnUiThread(() -> {
+            Accounts accounts = new Accounts(activity);
+            accounts.pick(currentUrl, account -> {
+
+                // build some strings lol. kinda wacky ngl
+                String js = "CookieManager.setCookie('token', " + escapeJs(account.optString("token")) + ");";
+                js += "CookieManager.setCookie('id', " + escapeJs(account.optString("id")) + ");";
+                js += "CookieManager.setCookie('username', " + escapeJs(account.optString("name")) + ");";
+
+                // some more wacky shit lol
+                String pow = account.optString("pow", "");
+                String[] parts = pow.split("-", 2);
+                String challenge = parts.length > 0 ? parts[0] : "";
+                String solution = parts.length > 1 ? parts[1] : "";
+
+                js += "CookieManager.setCookie('pow_challenge', " + escapeJs(challenge) + ");";
+                js += "CookieManager.setCookie('pow_solution', " + escapeJs(solution) + ");";
+
+                js += "location.reload();";
+
+                // idk why, ide suggested it
+                String finalJs = js;
+
+                webView.post(() -> webView.evaluateJavascript(finalJs, null));
+            }, this::scanAccountCode);
+        });
+    }
+
+    private String escapeJs(String s) {
+        return "'" + s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n") + "'";
+    }
+
+    @JavascriptInterface
+    public void scanAccountCode() {
+        try {
+            Accounts accounts = new Accounts(activity);
+            QRScanner.scan(activity).thenAccept(result -> {
+                activity.runOnUiThread(() -> {
+                    if (result instanceof JSONObject) {
+                        JSONObject account = (JSONObject) result;
+                        Log.d("QRCODE", account.toString());
+                        accounts.save(currentUrl, account);
+                    }
+                });
+            });
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "scanAccountCode failed", e);
+        }
+    }
+
+    @JavascriptInterface
     public String setAccountCredentials(String identifier, String id, String token) {
+        // should clarify.
+        // this is used for the message inbox fetching only so notifications work.
         try {
             android.content.SharedPreferences prefs = webView.getContext()
                     .getSharedPreferences("dcts_accounts", Context.MODE_PRIVATE);
