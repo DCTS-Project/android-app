@@ -37,10 +37,14 @@ android {
 }
 
 dependencies {
+    implementation(libs.camera.camera2)
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
+    implementation(libs.play.services.mlkit.barcode.scanning)
+    implementation(libs.camera.view)
+    implementation(libs.camera.lifecycle)
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)

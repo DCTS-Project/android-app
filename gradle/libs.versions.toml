@@ -7,6 +7,9 @@ appcompat = "1.6.1"
 material = "1.10.0"
 activity = "1.8.0"
 constraintlayout = "2.1.4"
+playServicesMlkitBarcodeScanning = "18.3.1"
+cameraView = "1.5.3"
+cameraLifecycle = "1.5.3"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -16,6 +19,10 @@ appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "a
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+play-services-mlkit-barcode-scanning = { group = "com.google.android.gms", name = "play-services-mlkit-barcode-scanning", version.ref = "playServicesMlkitBarcodeScanning" }
+camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraView" }
+camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraLifecycle" }
+camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraLifecycle" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

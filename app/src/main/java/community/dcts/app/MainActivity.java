@@ -1,9 +1,13 @@
 package community.dcts.app;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
 import android.webkit.ConsoleMessage;
 import android.webkit.WebChromeClient;
@@ -18,6 +22,8 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -40,6 +46,14 @@ public class MainActivity extends AppCompatActivity {
                 .clear()
                 .apply();
          */
+
+        // ask for power shit because android is aids
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
+            Intent batteryIntent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            batteryIntent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(batteryIntent);
+        }
 
 
         super.onCreate(savedInstanceState);
@@ -88,6 +102,18 @@ public class MainActivity extends AppCompatActivity {
 
         // for now until i make a proper app
         webView.loadUrl("https://chat.network-z.com/serverlist");
+
+        QRScanner.scan(this).thenAccept(result -> {
+            runOnUiThread(() -> {
+                if (result instanceof JSONObject) {
+                    JSONObject json = (JSONObject) result;
+                    Log.d("QRCODE", json.toString());
+                } else {
+                    String raw = (String) result;
+                    Log.d("QRCODE", raw);
+                }
+            });
+        });
     }
 
     private void startFetcher() {
