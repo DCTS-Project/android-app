@@ -1,12 +1,23 @@
 package community.dcts.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import androidx.annotation.RequiresPermission;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+
 import org.json.JSONObject;
+
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class JSBridge {
     private final WebView webView;
@@ -22,6 +33,46 @@ public class JSBridge {
         this.webView = webView;
         this.activity = activity;
         this.signer = new dSyncSign(activity);
+    }
+
+    @JavascriptInterface
+    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
+    public void ShowNotification(String title, String text, String imageUrl) {
+        new Thread(() -> {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                        "dcts_notifications", "DCTS", android.app.NotificationManager.IMPORTANCE_HIGH
+                );
+                android.app.NotificationManager mgr = activity.getSystemService(android.app.NotificationManager.class);
+                mgr.createNotificationChannel(channel);
+            }
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(activity, "dcts_notifications")
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle(title)
+                    .setContentText(text)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true);
+
+            if (imageUrl != null && !imageUrl.isEmpty()) {
+                try {
+                    URL url = new URL(imageUrl);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setDoInput(true);
+                    conn.connect();
+                    InputStream input = conn.getInputStream();
+                    Bitmap bitmap = BitmapFactory.decodeStream(input);
+                    builder.setLargeIcon(bitmap);
+                    input.close();
+                    conn.disconnect();
+                } catch (Exception e) {
+                    // whatever
+                }
+            }
+
+            NotificationManagerCompat manager = NotificationManagerCompat.from(activity);
+            manager.notify((int) System.currentTimeMillis(), builder.build());
+        }).start();
     }
 
     @JavascriptInterface
