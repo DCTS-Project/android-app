@@ -171,33 +171,61 @@ public class JSBridge {
 
     @JavascriptInterface
     public String GetServers() {
+        return GetServersInternal(null);
+    }
+
+    @JavascriptInterface
+    public String GetServers(String address) {
+        return GetServersInternal(address);
+    }
+
+    private String GetServersInternal(String address) {
         try {
             android.content.SharedPreferences prefs = webView.getContext()
                     .getSharedPreferences("dcts_servers", Context.MODE_PRIVATE);
 
             java.util.Map<String, ?> all = prefs.getAll();
-            org.json.JSONArray arr = new org.json.JSONArray();
+            org.json.JSONObject out = new org.json.JSONObject();
 
             for (java.util.Map.Entry<String, ?> entry : all.entrySet()) {
-                arr.put(new org.json.JSONObject((String) entry.getValue()));
+                String key = entry.getKey();
+                Object value = entry.getValue();
+
+                if (!(value instanceof String)) continue;
+
+                try {
+                    org.json.JSONObject server = new org.json.JSONObject((String) value);
+
+                    if (!server.has("address") || server.optString("address").isEmpty()) {
+                        server.put("address", key);
+                    }
+
+                    if (address != null && !address.equals(key)) continue;
+
+                    out.put(key, server);
+                } catch (Exception ignored) {
+                    if (address != null && !address.equals(key)) continue;
+
+                    org.json.JSONObject fallback = new org.json.JSONObject();
+                    fallback.put("address", key);
+                    fallback.put("serverinfo", JSONObject.NULL);
+                    out.put(key, fallback);
+                }
             }
 
-            return arr.toString();
+            if (address != null) {
+                return out.has(address) ? out.getJSONObject(address).toString() : null;
+            }
+
+            return out.toString();
         } catch (Exception e) {
-            return "[]";
+            return address != null ? null : "{}";
         }
     }
 
     @JavascriptInterface
     public String GetServer(String address) {
-        try {
-            android.content.SharedPreferences prefs = webView.getContext()
-                    .getSharedPreferences("dcts_servers", Context.MODE_PRIVATE);
-
-            return prefs.getString(address, null);
-        } catch (Exception e) {
-            return null;
-        }
+        return GetServers(address);
     }
 
     @JavascriptInterface
@@ -206,14 +234,25 @@ public class JSBridge {
             android.content.SharedPreferences prefs = webView.getContext()
                     .getSharedPreferences("dcts_servers", Context.MODE_PRIVATE);
 
-            org.json.JSONObject obj = new org.json.JSONObject();
+            String raw = prefs.getString(address, null);
+            org.json.JSONObject obj = raw != null ? new org.json.JSONObject(raw) : new org.json.JSONObject();
+
             obj.put("address", address);
-            obj.put("isFav", isFav);
+
+            if (!obj.has("serverinfo")) {
+                obj.put("serverinfo", JSONObject.NULL);
+            }
+
+            if (isFav != null) {
+                obj.put("fav", isFav);
+            }
 
             prefs.edit().putString(address, obj.toString()).apply();
+
+            Log.d("WEBVIEW_JS", "Saved server " + address + ": " + obj.toString());
             return "ok";
         } catch (Exception e) {
-            android.util.Log.e("WebClient", "SaveServer failed", e);
+            Log.e("WEBVIEW_JS", "SaveServer failed", e);
             return null;
         }
     }
