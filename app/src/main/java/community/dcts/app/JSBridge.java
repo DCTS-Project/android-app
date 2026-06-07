@@ -16,6 +16,7 @@ import androidx.core.app.NotificationManagerCompat;
 import org.json.JSONObject;
 
 import java.io.InputStream;
+import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
@@ -37,42 +38,86 @@ public class JSBridge {
 
     @JavascriptInterface
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
-    public void ShowNotification(String title, String text, String imageUrl) {
-        new Thread(() -> {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                android.app.NotificationChannel channel = new android.app.NotificationChannel(
-                        "dcts_notifications", "DCTS", android.app.NotificationManager.IMPORTANCE_HIGH
-                );
-                android.app.NotificationManager mgr = activity.getSystemService(android.app.NotificationManager.class);
-                mgr.createNotificationChannel(channel);
-            }
+    public String ShowNotification(String json) {
+        try {
+            JSONObject obj = new JSONObject(json);
 
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(activity, "dcts_notifications")
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title)
-                    .setContentText(text)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setAutoCancel(true);
+            String title = obj.optString("title", "dcts");
+            String text = obj.optString("text", "");
 
-            if (imageUrl != null && !imageUrl.isEmpty()) {
-                try {
-                    URL url = new URL(imageUrl);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setDoInput(true);
-                    conn.connect();
-                    InputStream input = conn.getInputStream();
-                    Bitmap bitmap = BitmapFactory.decodeStream(input);
-                    builder.setLargeIcon(bitmap);
-                    input.close();
-                    conn.disconnect();
-                } catch (Exception e) {
-                    // whatever
+            String imageUrl = null;
+
+            if (obj.has("icon") && !obj.isNull("icon")) {
+                Object iconValue = obj.get("icon");
+
+                if (iconValue instanceof String) {
+                    String tmp = ((String) iconValue).trim();
+
+                    if (!tmp.isEmpty() && !"null".equalsIgnoreCase(tmp)) {
+                        imageUrl = tmp;
+                    }
                 }
             }
 
-            NotificationManagerCompat manager = NotificationManagerCompat.from(activity);
-            manager.notify((int) System.currentTimeMillis(), builder.build());
-        }).start();
+            final String finalTitle = title;
+            final String finalText = text;
+            final String finalImageUrl = imageUrl;
+
+            new Thread(() -> {
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                                "dcts_notifications",
+                                "DCTS",
+                                android.app.NotificationManager.IMPORTANCE_HIGH
+                        );
+
+                        android.app.NotificationManager mgr =
+                                activity.getSystemService(android.app.NotificationManager.class);
+
+                        mgr.createNotificationChannel(channel);
+                    }
+
+                    NotificationCompat.Builder builder = new NotificationCompat.Builder(activity, "dcts_notifications")
+                            .setSmallIcon(android.R.drawable.ic_dialog_info)
+                            .setContentTitle(finalTitle)
+                            .setContentText(finalText)
+                            .setPriority(NotificationCompat.PRIORITY_HIGH)
+                            .setAutoCancel(true);
+
+                    if (finalImageUrl != null) {
+                        try {
+                            URL url = new URL(finalImageUrl);
+                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                            conn.setDoInput(true);
+                            conn.connect();
+
+                            InputStream input = conn.getInputStream();
+                            Bitmap bitmap = BitmapFactory.decodeStream(input);
+
+                            if (bitmap != null) {
+                                builder.setLargeIcon(bitmap);
+                            }
+
+                            input.close();
+                            conn.disconnect();
+                        } catch (Exception e) {
+                            Log.e("WEBVIEW_JS", "notification icon failed", e);
+                        }
+                    }
+
+                    NotificationManagerCompat manager = NotificationManagerCompat.from(activity);
+                    manager.notify((int) System.currentTimeMillis(), builder.build());
+                } catch (Exception e) {
+                    Log.e("WEBVIEW_JS", "ShowNotification thread failed", e);
+                }
+            }).start();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "ShowNotification failed", e);
+            return null;
+        }
     }
 
     @JavascriptInterface
@@ -151,6 +196,255 @@ public class JSBridge {
     }
 
     @JavascriptInterface
+    public String SaveSession(String host, String sessionId) {
+        try {
+            if (host == null || host.isEmpty()) {
+                throw new Exception("host is required");
+            }
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_sessions", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putString(host, sessionId)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SaveSession failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetSession(String host) {
+        try {
+            if (host == null || host.isEmpty()) return null;
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_sessions", Context.MODE_PRIVATE);
+
+            return prefs.getString(host, null);
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetSession failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetSessions() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_sessions", Context.MODE_PRIVATE);
+
+            java.util.Map<String, ?> all = prefs.getAll();
+            JSONObject out = new JSONObject();
+
+            for (java.util.Map.Entry<String, ?> entry : all.entrySet()) {
+                Object value = entry.getValue();
+
+                if (value instanceof String) {
+                    out.put(entry.getKey(), value);
+                }
+            }
+
+            return out.toString();
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetSessions failed", e);
+            return "{}";
+        }
+    }
+
+    @JavascriptInterface
+    public String DeleteSession(String host) {
+        try {
+            if (host == null || host.isEmpty()) return null;
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_sessions", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .remove(host)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "DeleteSession failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String SetAlias(String alias) {
+        try {
+            if (alias == null || alias.isEmpty()) {
+                throw new Exception("address wasnt set");
+            }
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putString("user_alias", alias)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetAlias failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetHomeServer() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            String server = prefs.getString("user_homeserver", null);
+
+            if (server == null || server.isEmpty()) {
+                server = "chat.network-z.com";
+
+                prefs.edit()
+                        .putString("user_homeserver", server)
+                        .apply();
+            }
+
+            return server;
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetHomeServer failed", e);
+            return "chat.network-z.com";
+        }
+    }
+
+    @JavascriptInterface
+    public String SetHomeServer(String address) {
+        try {
+            if (address == null || address.isEmpty()) {
+                throw new Exception("address wasnt set");
+            }
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putString("user_homeserver", address)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetHomeServer failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String SetLastOnline(Long timestamp) {
+        try {
+            if (timestamp == null) {
+                throw new Exception("lastonline wasnt set");
+            }
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putLong("user_lastonline", timestamp)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetLastOnline failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetNickname() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            return prefs.getString("user_nickname", null);
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetNickname failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String SetNickname(String nickname) {
+        try {
+            if (nickname == null || nickname.isEmpty()) {
+                throw new Exception("nickname wasnt set");
+            }
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putString("user_nickname", nickname)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetNickname failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String SetUserConsistentSettings(boolean keepConsistent) {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putBoolean("user_consistent", keepConsistent)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetUserConsistentSettings failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String SetUserIcon(String iconString) {
+        try {
+            if (iconString == null || iconString.isEmpty()) {
+                throw new Exception("Icon wasnt set");
+            }
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putString("user_icon", iconString)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetUserIcon failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetUserIcon() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            return prefs.getString("user_icon", null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @JavascriptInterface
     public String setAccountCredentials(String identifier, String id, String token) {
         // should clarify.
         // this is used for the message inbox fetching only so notifications work.
@@ -177,6 +471,19 @@ public class JSBridge {
     @JavascriptInterface
     public String GetServers(String address) {
         return GetServersInternal(address);
+    }
+
+    @JavascriptInterface
+    public String GetAlias() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            return prefs.getString("user_alias", null);
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetAlias failed", e);
+            return null;
+        }
     }
 
     private String GetServersInternal(String address) {
@@ -220,6 +527,324 @@ public class JSBridge {
             return out.toString();
         } catch (Exception e) {
             return address != null ? null : "{}";
+        }
+    }
+
+    @JavascriptInterface
+    public String SaveChat(String chatId, String data) {
+        try {
+            if (chatId == null || chatId.isEmpty() || "undefined".equals(chatId)) return null;
+            if (data == null || data.isEmpty() || "undefined".equals(data) || "null".equals(data)) return null;
+
+            JSONObject obj = new JSONObject(data);
+
+            java.io.File messagesDir = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/messages");
+            if (!messagesDir.exists()) messagesDir.mkdirs();
+
+            java.io.File configFile = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/config.json");
+            writeFile(configFile, obj.toString(4));
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SaveChat failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String SaveChatMessage(String chatId, String data) {
+        try {
+            if (chatId == null || chatId.isEmpty() || "undefined".equals(chatId)) return null;
+            if (data == null || data.isEmpty() || "undefined".equals(data) || "null".equals(data)) return null;
+
+            JSONObject obj = new JSONObject(data);
+            String messageId = obj.optString("messageId", null);
+
+            if (messageId == null || messageId.isEmpty() || "undefined".equals(messageId) || "null".equals(messageId)) return null;
+
+            java.io.File messagesDir = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/messages");
+            if (!messagesDir.exists()) messagesDir.mkdirs();
+
+            java.io.File messageFile = new java.io.File(messagesDir, messageId + ".json");
+            writeFile(messageFile, obj.toString(4));
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SaveChatMessage failed", e);
+            return null;
+        }
+    }
+    @JavascriptInterface
+    public String GetChat(String chatId) {
+        try {
+            if (chatId == null || chatId.isEmpty()) return null;
+
+            java.io.File configFile = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/config.json");
+
+            if (!configFile.exists()) return null;
+
+            return readFile(configFile);
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetChat failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetChats() {
+        try {
+            java.io.File chatsDir = new java.io.File(activity.getFilesDir(), "chats");
+            if (!chatsDir.exists()) chatsDir.mkdirs();
+
+            JSONObject out = new JSONObject();
+
+            java.io.File[] chatDirs = chatsDir.listFiles();
+            if (chatDirs == null) return "{}";
+
+            for (java.io.File chatDir : chatDirs) {
+                if (!chatDir.isDirectory()) continue;
+
+                java.io.File configFile = new java.io.File(chatDir, "config.json");
+                if (!configFile.exists()) continue;
+
+                try {
+                    out.put(chatDir.getName(), new JSONObject(readFile(configFile)));
+                } catch (Exception ignored) {
+                }
+            }
+
+            return out.toString();
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetChats failed", e);
+            return "{}";
+        }
+    }
+
+    @JavascriptInterface
+    public String GetUserConsistentSettings() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            return String.valueOf(prefs.getBoolean("user_consistent", false));
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetUserConsistentSettings failed", e);
+            return "false";
+        }
+    }
+
+    @JavascriptInterface
+    public String GetChatMessage(String chatId, String messageId) {
+        try {
+            if (chatId == null || chatId.isEmpty()) return null;
+            if (messageId == null || messageId.isEmpty()) return null;
+
+            java.io.File messageFile = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/messages/" + messageId + ".json");
+
+            if (!messageFile.exists()) return null;
+
+            return readFile(messageFile);
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetChatMessage failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetChatMessages(String chatId, String timestampRaw, String descRaw) {
+        try {
+            if (chatId == null || chatId.isEmpty()) throw new Exception("chatId is required");
+
+            long timestamp = System.currentTimeMillis();
+            boolean desc = true;
+            int limit = 50;
+
+            if (timestampRaw != null && !timestampRaw.isEmpty() && !"null".equals(timestampRaw)) {
+                timestamp = Long.parseLong(timestampRaw);
+            }
+
+            if (descRaw != null && !descRaw.isEmpty() && !"null".equals(descRaw)) {
+                desc = Boolean.parseBoolean(descRaw);
+            }
+
+            java.io.File messagesDir = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/messages");
+            if (!messagesDir.exists()) messagesDir.mkdirs();
+
+            java.io.File[] files = messagesDir.listFiles();
+            if (files == null) return "{}";
+
+            java.util.ArrayList<JSONObject> messages = new java.util.ArrayList<>();
+
+            for (java.io.File file : files) {
+                if (!file.isFile()) continue;
+                if (!file.getName().endsWith(".json")) continue;
+
+                try {
+                    JSONObject data = new JSONObject(readFile(file));
+                    long createdAt = data.optLong("timestamp", 0);
+
+                    if (desc && createdAt >= timestamp) continue;
+                    if (!desc && createdAt <= timestamp) continue;
+
+                    JSONObject item = new JSONObject();
+                    item.put("id", file.getName());
+                    item.put("timestamp", createdAt);
+                    item.put("data", data);
+
+                    messages.add(item);
+                } catch (Exception ignored) {
+                }
+            }
+
+            final boolean finalDesc = desc;
+
+            messages.sort((a, b) -> {
+                long at = a.optLong("timestamp", 0);
+                long bt = b.optLong("timestamp", 0);
+
+                if (finalDesc) return Long.compare(bt, at);
+                return Long.compare(at, bt);
+            });
+
+            JSONObject out = new JSONObject();
+
+            for (int i = 0; i < messages.size() && i < limit; i++) {
+                JSONObject item = messages.get(i);
+                out.put(item.optString("id"), item.getJSONObject("data"));
+            }
+
+            return out.toString();
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetChatMessages failed", e);
+            return "{}";
+        }
+    }
+
+    @JavascriptInterface
+    public String GetChatLastMessage(String chatId) {
+        try {
+            String raw = GetChatMessages(chatId, String.valueOf(System.currentTimeMillis()), "true");
+            JSONObject messages = new JSONObject(raw);
+
+            java.util.Iterator<String> keys = messages.keys();
+
+            JSONObject newest = null;
+            long newestTimestamp = 0;
+
+            while (keys.hasNext()) {
+                String key = keys.next();
+                JSONObject msg = messages.getJSONObject(key);
+                long timestamp = msg.optLong("timestamp", 0);
+
+                if (newest == null || timestamp > newestTimestamp) {
+                    newest = msg;
+                    newestTimestamp = timestamp;
+                }
+            }
+
+            return newest != null ? newest.toString() : null;
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetChatLastMessage failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String DeleteChatMessage(String chatId, String messageId) {
+        try {
+            if (chatId == null || chatId.isEmpty()) return null;
+            if (messageId == null || messageId.isEmpty()) return null;
+
+            java.io.File messageFile = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/messages/" + messageId + ".json");
+
+            if (messageFile.exists()) messageFile.delete();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "DeleteChatMessage failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String DeleteChat(String chatId) {
+        try {
+            if (chatId == null || chatId.isEmpty()) return null;
+
+            java.io.File chatDir = new java.io.File(activity.getFilesDir(), "chats/" + chatId);
+
+            deleteRecursive(chatDir);
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "DeleteChat failed", e);
+            return null;
+        }
+    }
+
+    private void writeFile(java.io.File file, String content) throws Exception {
+        java.io.File parent = file.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+
+        java.io.FileOutputStream fos = new java.io.FileOutputStream(file, false);
+        fos.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        fos.close();
+    }
+
+    private String readFile(java.io.File file) throws Exception {
+        byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+        return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private void deleteRecursive(java.io.File file) {
+        if (file == null || !file.exists()) return;
+
+        if (file.isDirectory()) {
+            java.io.File[] children = file.listFiles();
+
+            if (children != null) {
+                for (java.io.File child : children) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+
+        file.delete();
+    }
+
+    @JavascriptInterface
+    public String GetLastOnline() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            return String.valueOf(prefs.getLong("client_lastOnline", 0));
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "GetLastOnline failed", e);
+            return "0";
+        }
+    }
+
+    @JavascriptInterface
+    public String SetLastOnline(String timestampRaw) {
+        try {
+            if (timestampRaw == null || timestampRaw.isEmpty()) {
+                throw new Exception("lastonline wasnt set");
+            }
+
+            long timestamp = Long.parseLong(timestampRaw);
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putLong("user_lastonline", timestamp)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetLastOnline failed", e);
+            return null;
         }
     }
 

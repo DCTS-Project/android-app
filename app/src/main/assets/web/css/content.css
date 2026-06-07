@@ -1,0 +1,12 @@
+.layout > .content-container > .content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+
+    padding: 1rem;
+    overflow: auto;
+}
+
+.ql-formats {
+    border-radius: 4px;
+}
