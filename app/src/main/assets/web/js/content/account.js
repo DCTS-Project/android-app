@@ -69,7 +69,7 @@ async function loadAccount(){
                     JsonEditor.hideSaveButton();
                 }
             }, {
-                regexMatcher: /^[a-zA-Z0-9_.-]{1,30}$/,
+                regexMatcher: /^https?:\/\/[a-zA-Z0-9.-]+(?:\/[^\s]*)?$/,
                 disabled: disableInputs,
                 canBeNull: true,
             })
@@ -112,7 +112,7 @@ async function loadAccount(){
     if(typeof Client().SetUserConsistentSettings === "function" ){
         getAccountSettingsElement().insertAdjacentElement(
             "beforeend",
-            JsonEditor.getSettingElement(consistent, "Consistent?", "Automatically update server profiles on connect with these settings.", async (value) => {
+            JsonEditor.getSettingElement(consistent, "Sync with servers?", "Automatically update server profiles on connection.", async (value) => {
                 if(originalUserData.consistent !== value){
                     JsonEditor.showSaveButton("consistent", () => {
                         originalUserData.consistent = value
