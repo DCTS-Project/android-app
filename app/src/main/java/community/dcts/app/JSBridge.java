@@ -562,6 +562,7 @@ public class JSBridge {
 
             if (messageId == null || messageId.isEmpty() || "undefined".equals(messageId) || "null".equals(messageId)) return null;
 
+
             java.io.File messagesDir = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/messages");
             if (!messagesDir.exists()) messagesDir.mkdirs();
 
@@ -659,15 +660,29 @@ public class JSBridge {
             boolean desc = true;
             int limit = 50;
 
-            if (timestampRaw != null && !timestampRaw.isEmpty() && !"null".equals(timestampRaw)) {
-                timestamp = Long.parseLong(timestampRaw);
+            if (
+                    timestampRaw != null &&
+                            !timestampRaw.isEmpty() &&
+                            !"null".equalsIgnoreCase(timestampRaw) &&
+                            !"undefined".equalsIgnoreCase(timestampRaw)
+            ) {
+                timestamp = new java.math.BigDecimal(timestampRaw).longValue();
             }
 
-            if (descRaw != null && !descRaw.isEmpty() && !"null".equals(descRaw)) {
+            if (
+                    descRaw != null &&
+                            !descRaw.isEmpty() &&
+                            !"null".equalsIgnoreCase(descRaw) &&
+                            !"undefined".equalsIgnoreCase(descRaw)
+            ) {
                 desc = Boolean.parseBoolean(descRaw);
             }
 
-            java.io.File messagesDir = new java.io.File(activity.getFilesDir(), "chats/" + chatId + "/messages");
+            java.io.File messagesDir = new java.io.File(
+                    activity.getFilesDir(),
+                    "chats/" + chatId + "/messages"
+            );
+
             if (!messagesDir.exists()) messagesDir.mkdirs();
 
             java.io.File[] files = messagesDir.listFiles();
@@ -692,7 +707,8 @@ public class JSBridge {
                     item.put("data", data);
 
                     messages.add(item);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    Log.e("WEBVIEW_JS", "Failed loading message: " + file.getAbsolutePath(), e);
                 }
             }
 
@@ -832,7 +848,7 @@ public class JSBridge {
                 throw new Exception("lastonline wasnt set");
             }
 
-            long timestamp = Long.parseLong(timestampRaw);
+            long timestamp = new java.math.BigDecimal(timestampRaw).longValue();
 
             android.content.SharedPreferences prefs = webView.getContext()
                     .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
