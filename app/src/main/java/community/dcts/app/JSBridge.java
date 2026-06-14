@@ -520,6 +520,22 @@ public class JSBridge {
                 }
             }
 
+            if (out.length() == 0) {
+                String defaultAddress = "chat.network-z.com";
+
+                org.json.JSONObject defaultServer = new org.json.JSONObject();
+                defaultServer.put("address", defaultAddress);
+                defaultServer.put("serverinfo", JSONObject.NULL);
+
+                if (address != null) {
+                    return address.equals(defaultAddress)
+                            ? defaultServer.toString()
+                            : null;
+                }
+
+                out.put(defaultAddress, defaultServer);
+            }
+
             if (address != null) {
                 return out.has(address) ? out.getJSONObject(address).toString() : null;
             }
