@@ -108,7 +108,8 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // for now until i make a proper app
-        webView.loadUrl("https://chat.network-z.com/serverlist");
+        //webView.loadUrl("https://chat.network-z.com/serverlist");
+        webView.loadUrl("file:///android_asset/web/index.html");
 
         /*
         QRScanner.scan(this).thenAccept(result -> {
