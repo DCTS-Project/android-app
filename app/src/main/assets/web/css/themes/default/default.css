@@ -78,6 +78,7 @@ a {
     color: hsl(from var(--main) h s calc(l * 6));
 }
 
+.layout > .content-container > .navigation > .entry.chats span.badge,
 .layout > .content-container > .content > .message-page-container .chats .chat .badge {
     background-color: hsl(from var(--main) h s calc(l * 10));
     color: hsl(from var(--main) h s calc(l * 1));
@@ -179,4 +180,10 @@ span.mention {
 
 .layout > .content-container > .content > .message-page-container .chats > .header {
     border-bottom: 1.5px solid var(--border-color);
+}
+
+details.error{
+    color: indianred;
+    background-color: rgba(205, 92, 92, 0.2);
+    border: 1px solid indianred;
 }

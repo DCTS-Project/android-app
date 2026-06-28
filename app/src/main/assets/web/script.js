@@ -15,8 +15,13 @@ async function getDiscoveredHosts(){
 
 async function getSavedServers(container) {
     if (!container) return console.warn("No container supplied!");
+    selectNavEntry(getNavEntryElement(0))
 
     container.innerHTML = `<div class="serverList"></div>`;
+    let serverListElement = container.querySelector(".serverList");
+
+    // only show loading bar if servers can be visible
+    if(serverListElement) showLoadingBar()
 
     let servers = isLauncher() ? await Client().GetServers() : {};
     if(typeof servers === "string") servers = JSON.parse(servers || "{}"); // android bridge fix
@@ -41,7 +46,8 @@ async function getSavedServers(container) {
         }
     }
 
-    renderServersList(container.querySelector(".serverList"), mergedServers);
+    await renderServersList(serverListElement, mergedServers);
+    if(serverListElement)  stopLoadingBar()
 }
 
 function submitServerUI(){
@@ -224,15 +230,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     if(await Client().GetHomeServer()?.trim?.length === 0) await Client().SetHomeServer("chat.network-z.com");
 
     // connect to it
-    connectToSocketHost(await Client().GetHomeServer());
+    await connectToSocketHost(await Client().GetHomeServer());
 
     ensureDomPurify();
     buildNavHTML(true);
     getSavedServers(getContentElement())
-    //loadMessages();
+
+    //loadAccount()
+    //loadAccount("chat.network-z.com", "zainifer")
+
+    // only if local for now.
+    if(isLocal()){
+        setUnreadChatsInNav();
+    }
 
     registerSwipingHandles();
+    selectNavEntry(getNavEntryElement(0))
 });
+
+async function setUnreadChatsInNav(){
+    // update chas nav icon with badge without loading shit
+    let unreadChats = await getUnreadChats();
+    let unreadChatsCount = Object.keys(unreadChats ?? {}).length;
+    if(unreadChatsCount > 0) setChatNavBadgeCount(unreadChatsCount);
+
+    // show some indicator that you have new messages
+    let inboxResult = await fetchMessengerChats(await Client().GetLastOnline());
+    if(inboxResult?.inbox > 0){
+        setChatNavBadgeCount(inboxResult?.inbox)
+    }
+}
 
 function registerSwipingHandles(){
     if(MobilePanel.isMobile()){
@@ -260,9 +287,13 @@ function registerSwipingHandles(){
 
         // general actions
         function onGeneralSwipe(){
-            if(getNavElement()?.classList?.contains("hide")) getNavElement().classList.remove("hide");
+            showNavigation()
         }
     }
+}
+
+function showNavigation(){
+    if(getNavElement()?.classList?.contains("hide")) getNavElement().classList.remove("hide");
 }
 
 function truncateString(value, length) {

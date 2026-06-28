@@ -412,6 +412,48 @@ public class JSBridge {
     }
 
     @JavascriptInterface
+    public String SetSignature(String html) {
+        try {
+            if (html == null || html.isEmpty()) {
+                throw new Exception("signature wasnt set");
+            }
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putString("user_signature", html)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetSignature failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String SetUserBanner(String urlString) {
+        try {
+            if (urlString == null || urlString.isEmpty()) {
+                throw new Exception("banner wasnt set");
+            }
+
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            prefs.edit()
+                    .putString("user_banner", urlString)
+                    .apply();
+
+            return "ok";
+        } catch (Exception e) {
+            Log.e("WEBVIEW_JS", "SetUserBanner failed", e);
+            return null;
+        }
+    }
+
+    @JavascriptInterface
     public String SetUserIcon(String iconString) {
         try {
             if (iconString == null || iconString.isEmpty()) {
@@ -439,6 +481,30 @@ public class JSBridge {
                     .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
 
             return prefs.getString("user_icon", null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetUserBanner() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            return prefs.getString("user_banner", null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @JavascriptInterface
+    public String GetSignature() {
+        try {
+            android.content.SharedPreferences prefs = webView.getContext()
+                    .getSharedPreferences("dcts_settings", Context.MODE_PRIVATE);
+
+            return prefs.getString("user_signature", null);
         } catch (Exception e) {
             return null;
         }

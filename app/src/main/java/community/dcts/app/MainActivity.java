@@ -10,12 +10,15 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
 import android.webkit.ConsoleMessage;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -105,6 +108,28 @@ public class MainActivity extends AppCompatActivity {
                 );
                 return true;
             }
+
+            @Override
+            public boolean onShowFileChooser(
+                    WebView webView,
+                    ValueCallback<Uri[]> filePathCallback,
+                    FileChooserParams fileChooserParams
+            ) {
+                if (MainActivity.this.filePathCallback != null) {
+                    MainActivity.this.filePathCallback.onReceiveValue(null);
+                }
+
+                MainActivity.this.filePathCallback = filePathCallback;
+
+                try {
+                    filePickerLauncher.launch(fileChooserParams.createIntent());
+                } catch (Exception e) {
+                    MainActivity.this.filePathCallback = null;
+                    return false;
+                }
+
+                return true;
+            }
         });
 
         // for now until i make a proper app
@@ -163,6 +188,23 @@ public class MainActivity extends AppCompatActivity {
          */
 
     }
+
+    private ValueCallback<Uri[]> filePathCallback;
+
+    private final ActivityResultLauncher<Intent> filePickerLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                ValueCallback<Uri[]> callback = filePathCallback;
+                filePathCallback = null;
+
+                if (callback == null) return;
+
+                Uri[] uris = WebChromeClient.FileChooserParams.parseResult(
+                        result.getResultCode(),
+                        result.getData()
+                );
+
+                callback.onReceiveValue(uris);
+            });
 
     private void startFetcher() {
         inboxFetcher = new InboxFetcher(this);
