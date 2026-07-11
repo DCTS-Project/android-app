@@ -123,6 +123,7 @@ async function socketHello(socket, address, {
                 publicKey: await Client().GetPublicKey(),
                 sessionId: await getSessionIdFromHost(address),
                 home_server: await Client().GetHomeServer(),
+                vanity,
                 profile,
             },
             async function (response) {
@@ -202,7 +203,7 @@ async function decryptUserMessage(message) {
 
 async function sendMessage(text, targetPublicKey, host, {
     test = false,
-    customTimestamp = null,
+    customTimestamp = null
 } = {}) {
 
     if (text?.trim()?.length === 0) throw new Error("no text found to send");

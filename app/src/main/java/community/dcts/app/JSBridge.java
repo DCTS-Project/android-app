@@ -340,6 +340,11 @@ public class JSBridge {
     }
 
     @JavascriptInterface
+    public String GetLocalServerAddress() {
+        return "file:///android_asset/web/index.html";
+    }
+
+    @JavascriptInterface
     public String SetLastOnline(Long timestamp) {
         try {
             if (timestamp == null) {

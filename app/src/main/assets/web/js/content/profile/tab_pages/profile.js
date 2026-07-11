@@ -6,7 +6,8 @@ async function getUserProfileData(host, identifier){
         signal: AbortSignal.timeout(5000)
     });
 
-    return userData?.json() ?? {};
+    let jsonResponse = userData?.json();
+    return jsonResponse ?? {};
 }
 
 async function loadAccountProfileSettings(identifier) {
@@ -50,7 +51,7 @@ async function loadAccountProfileSettings(identifier) {
             JsonEditor.getSettingElement(alias, "Messenger Alias",
                 `   
                     How people can reach you<br>
-                    Current: ${originalUserData?.alias ? `${originalUserData?.alias}@${getHomeSocket().host}` : "none"}
+                    Current: <span class="highlight">${originalUserData?.alias ? `${originalUserData?.alias}@${getHomeSocket().host}` : "none"}</span>
                 `
                 , async (value) => {
                     if (originalUserData.alias !== value && value?.trim()?.length > 0) {

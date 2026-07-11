@@ -7,7 +7,7 @@ function getAccountContainerElement(){
 }
 
 function getTabContentPage(){
-    return getAccountContainerElement().querySelector('.tab_content') ?? null;
+    return getAccountContainerElement()?.querySelector('.tab_content') ?? null;
 }
 
 function getTabNavTabs(){
@@ -15,6 +15,8 @@ function getTabNavTabs(){
 }
 
 async function loadAccount(host, identifier){
+    hideHeader();
+
     if(!identifier && !host){
         identifier = await getGid();
         host = await getHomeSocket().host;
@@ -43,10 +45,11 @@ async function loadAccount(host, identifier){
     let memberBanner = getFixedUrl(homeServer, isServer ? userDataObj?.banner : userDataObj?.profile?.banner) ?? null;
     let memberName = isServer ? userDataObj?.name : userDataObj?.profile?.name ?? `${ChatTools.Sanitize.truncateText(gid, 6)}`  ?? null;
 
+    let hasVanityAlias = userDataObj?.vanity != null;
     let memberAlias = userDataObj?.vanity ?
-        `<a onclick="navigator.clipboard.writeText('${aliasAddress}')">${aliasAddress}</a>`
+        `${aliasAddress}`
         :
-        `<a onclick="navigator.clipboard.writeText('${gidAddressFull}')">${gidAddressShortened}</a>`;
+        `${gidAddressShortened}`;
 
     let isMyAccount = await getGid() === await getGid(userDataObj?.publicKey) && userDataObj?.publicKey && !isServer;
 
@@ -56,12 +59,21 @@ async function loadAccount(host, identifier){
     getContentElement().innerHTML =
     `    
         <div class="account-container" data-gid="${ChatTools.Sanitize.stripHTML(gid)}">            
+        
+        
+            <span class="back" onclick="renderMessages()">${Icon.display("back")}</span>
             <div class="banner" id="banner" onclick="uploadAccountImage(this)" style="--member-image: url('${ChatTools.Sanitize.stripHTML(memberBanner)}')">
-                <span class="back" onclick="renderMessages()">${Icon.display("back")}</span>
+                <div class="preview-action ${isMyAccount ? "mine" : ""}">
+                    <span>Change Banner</span>
+                </div>
             </div>
             
             <div class="profile-info">
-                <div class="icon" id="icon" onclick="uploadAccountImage(this)" style="--member-image: url('${ChatTools.Sanitize.stripHTML(memberIcon)}')"></div>
+                <div class="icon" id="icon" onclick="uploadAccountImage(this)" style="--member-image: url('${ChatTools.Sanitize.stripHTML(memberIcon)}')">
+                    <div class="preview-action ${isMyAccount ? "mine" : ""}">
+                        <span>Change</span>
+                    </div>
+                </div>
                 
                 <div class="details">
                     <h1 class="name">
@@ -79,7 +91,15 @@ async function loadAccount(host, identifier){
                         </div>
                     </h1>
                     
-                    <h1 class="alias">${ChatTools.Sanitize.forRender(memberAlias) ?? ""}</h1>    
+                    <h1 
+                    onclick="navigator.clipboard.writeText('${
+                        hasVanityAlias ? 
+                            ChatTools.Sanitize.stripHTML(aliasAddress) : ChatTools.Sanitize.stripHTML(gidAddressFull)
+                    }')" 
+                    class="alias"
+                    >
+                        <span class="highlight">${ChatTools.Sanitize.forRender(memberAlias, false) ?? ""}</span>
+                    </h1>    
                 
                     ${memberSignature ? 
                         `
@@ -95,7 +115,8 @@ async function loadAccount(host, identifier){
             ${ isMyAccount ? `
             <div class="tab_settings">
                 <div class="tabs">
-                    <a href="#" id="general" class="selected" onclick="loadAccountTabPageContent('general')">${Icon.display("info")} General</a>
+                    <a href="#" id="account" class="selected" onclick="loadAccountTabPageContent('account')">${Icon.display("account")} Account</a>
+                    <a href="#" id="export" class="" onclick="loadAccountTabPageContent('export')">${Icon.display("info")} Export</a>
                     
                 </div>
             </div>
@@ -127,7 +148,7 @@ async function uploadAccountImage(element){
 
     // only allow uploads when actually viewing own profile
     let parent = element.closest(".account-container");
-    if(!parent || parent?.getAttribute("data-gid") !== await getGid()) return;
+    if(!parent || parent?.getAttribute("data-gid") !== await getGid()) return console.warn("Not own profile");
 
     let file = await FileManager.pickFile(".png,.jpg,.gif,.webm,.jpeg");
     if(!file) return;
@@ -170,8 +191,11 @@ function clearProfileTabContentHTML(){
 }
 
 async function loadAccountTabPageContent(page){
+    clearProfileTabContentHTML();
+
     if(!page) return selectPage(loadAccountProfileSettings)
-    if(page === "general") return selectPage(loadAccountProfileSettings);
+    if(page === "account") return selectPage(loadAccountProfileSettings);
+    if(page === "export") return selectPage(loadExportOptions);
     selectPage(clearProfileTabContentHTML)
 
     async function selectPage(callback){
@@ -216,6 +240,6 @@ async function saveAccountChanges({
 }
 
 function getAccountSettingsElement(){
-    return getContentElement()?.querySelector(".account-container .settings");
+    return getContentElement()?.querySelector(".profile-container .settings");
 }
 

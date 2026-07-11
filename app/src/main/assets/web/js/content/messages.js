@@ -73,7 +73,10 @@ async function fetchServerInbox(host) {
     chatData.messages = messages;
     chatData.lastMessage = messages.at(-1) ?? null;
 
-    await Client().SaveChat(host, chatData);
+    if (hostInbox?.inbox?.length > 0 || Object.keys(storedChat).length > 0) {
+        await Client().SaveChat(host, chatData);
+    }
+
     return chatData;
 }
 
@@ -106,7 +109,10 @@ async function loadMessages({
         console.error(messengerChatsError);
     }
 
-    if(render) await renderMessages();
+    if(render) {
+        showHeader()
+        await renderMessages();
+    }
 
     let clientServers = await Client().GetServers();
     if (clientServers) {
@@ -126,6 +132,13 @@ function getChatNavBadgeCount(){
     return Number(badgeElement?.textContent ?? 0);
 }
 
+function getChatEntryElement(chatId){
+    let chatEntryElement = getChatListElement()?.querySelector(`.chat[data-gid="${chatId}"]`);
+    if(!chatEntryElement) throw new Error("No chat entry element found?");
+    return chatEntryElement;
+}
+
+
 function setChatNavBadgeCount(count = 0){
     let badgeElement = getNavEntryElement(1)?.querySelector("span.badge");
     if(!badgeElement) throw new Error("No badge element found?");
@@ -139,7 +152,7 @@ function setChatNavBadgeCount(count = 0){
 
 function setChatEntryBadgeCount(chatId, count = 0){
     let badgeElement = getChatListElement()?.querySelector(`.chat[data-gid="${chatId}"] .badge`);
-    if(!badgeElement) throw new Error("No badge element found?");
+    if(!badgeElement) return console.error("No badge element found?");
 
     if(count === 0) return badgeElement.style.display = "none";
     if(count > 99) count = "99+"
@@ -214,6 +227,8 @@ async function fetchMessengerChats(timestamp = 0) {
                     console.error("unsupported inbox type!", inboxType)
                 }
             }
+
+            await Client().SetLastOnline(new Date().getTime())
 
             resolve({
                 ...response,
@@ -313,7 +328,7 @@ async function renderMessages(customElement = undefined) {
         (a, b) => (b?.lastMessage?.timestamp ?? 0) - (a?.lastMessage?.timestamp ?? 0)
     );
 
-    addChatEntries(renderElement.querySelector(`.chats .list`))
+    await addChatEntries(renderElement.querySelector(`.chats .list`))
 
     async function addChatEntries(element) {
         if (!element) throw new Error("Element not found for adding chat element");
@@ -331,6 +346,9 @@ async function renderMessages(customElement = undefined) {
                 console.warn("No chat id found for chat ", chat)
                 continue;
             }
+
+            // avoid duplicates
+            if(div.querySelector(`.chat[data-gid="${chatId}"]`)) continue;
 
             chatId = ChatTools.Sanitize.stripHTML(chatId);
 
@@ -361,7 +379,6 @@ async function getLastChatMessage(chatId){
             text = await decryptUserMessage(message[await getGid()])
         }
         catch(lastChatMessageError){
-            console.error(lastChatMessageError);
             text = null;
         }
     }
@@ -390,10 +407,18 @@ async function renderChat(chatId, customChatObject = null) {
     let activeChat = customChatObject ?? await Client().GetChat(chatId);
     if (!activeChat) throw new Error("Chat not found");
 
+    // refresh chat data
+    if(activeChat?.gid){
+        let refreshedChat = await updateChatProfileData(activeChat?.home_server, activeChat?.gid);
+        if(refreshedChat?.title && activeChat?.title !== refreshedChat.title) activeChat.title = refreshedChat.title;
+        if(refreshedChat?.icon && activeChat?.icon !== refreshedChat.icon) activeChat.icon = refreshedChat.icon;
+        if(refreshedChat?.banner && activeChat?.banner !== refreshedChat.banner) activeChat.banner = refreshedChat.banner;
+    }
+
     await setChatHeader(activeChat);
 
     getChatContentElement().innerHTML += `
-        <div class="content" data-chatId="${chatId}"></div>
+        <div class="content" data-chatId="${ChatTools.Sanitize.stripHTML(chatId)}" data-homeserver="${ChatTools.Sanitize.stripHTML(activeChat?.home_server)}"></div>
         <div class="editor-container"></div>
     `;
 
@@ -521,6 +546,8 @@ async function renderChat(chatId, customChatObject = null) {
                 editor.quill.setContents([{insert: "\n"}]);
             }
         });
+
+        initUploadDragAndDrop(chatId);
     }
 
     await renderInboxElementsInChat(activeChat, true);
@@ -534,6 +561,7 @@ async function renderChat(chatId, customChatObject = null) {
 
     setChatEntryBadgeCount(chatId, 0)
     setUnreadChatsInNav()
+    hideHeader();
 }
 
 function renderSystemDateInChat(chatId, timestamp, element = null, renderTop = false){
@@ -806,6 +834,9 @@ async function getMessageHTML({
             `
 }
 
+async function getChatHeaderElement(chatId){
+    return getChatContentElement()?.querySelector(`.header[data-gid="${chatId}"]`)
+}
 
 async function setChatHeader(chat) {
     let chatTitle = chat?.title ?? chat?.name ?? "Unkown";
@@ -818,11 +849,136 @@ async function setChatHeader(chat) {
 
     getChatContentElement().innerHTML =
         `
-        <div class="header">
+        <div class="header" data-gid="${ChatTools.Sanitize.stripHTML(chatGid)}">
             <span class="back" onclick="loadMessages()">${Icon.display("back")}</span>
             <div class="icon" ${openProfileAction} style="background-image: url('${ChatTools.Sanitize.stripHTML(chatIcon)}')"></div>
             <h1 ${openProfileAction}>${ChatTools.Sanitize.forRender(ChatTools.Sanitize.truncateText(chatTitle, 30))}</h1>
         </div>`;
+}
+
+async function updateChatProfileData(host, gid){
+    if(!host) throw new Error("No host set");
+    if(!gid) throw new Error("No gid set");
+
+    let chat = await Client().GetChat(gid);
+    if(!chat) chat = {}
+
+    // fetch latest profile info
+    let profileData = (await getUserProfileData(host, gid))?.target;
+
+    let targetIcon = getFixedUrl(host, profileData?.profile?.icon) ?? null;
+    let targetBanner = getFixedUrl(host, profileData?.profile?.banner) ?? null;
+    let targetName = profileData?.profile?.name ?? null;
+
+    if(targetIcon && chat?.icon !== targetIcon) chat.icon = targetIcon;
+    if(targetBanner && chat?.banner !== targetBanner) chat.banner = targetBanner;
+    if(targetName && chat?.title !== targetName) chat.title = targetName;
+
+    // update ui if possible
+    try{
+        let chatListElement = await getChatEntryElement(gid)
+        let chatHeaderElement = await getChatHeaderElement(gid)
+
+        if(chatListElement){
+            let chatEntryIconElement = chatListElement.querySelector(".icon");
+            let chatEntryNameElement = chatListElement.querySelector(".meta .name");
+
+            if(chatEntryIconElement && targetIcon && chatEntryIconElement?.src !== targetIcon)
+                chatEntryIconElement.src = ChatTools.Sanitize.stripHTML(targetIcon);
+
+            if(chatEntryNameElement && targetName && chatEntryNameElement?.textContent !== targetName)
+                chatEntryNameElement.textContent = ChatTools.Sanitize.stripHTML(targetName);
+        }
+
+        if(chatHeaderElement){
+            let chatHeaderIconElement = chatHeaderElement.querySelector(".icon");
+            let chatHeaderNameElement = chatHeaderElement.querySelector("h1");
+
+            if(chatHeaderIconElement && targetIcon && chatHeaderIconElement?.src !== targetIcon)
+                chatHeaderIconElement.src = ChatTools.Sanitize.stripHTML(targetIcon)
+
+            if(chatHeaderNameElement && targetName && chatHeaderElement?.textContent !== targetName)
+                chatHeaderNameElement.textContent = ChatTools.Sanitize.stripHTML(targetName)
+        }
+    }
+    catch(error){
+        console.warn("Unable to update chat ui")
+        console.warn(error);
+    }
+
+    // then save chat and return
+    await Client().SaveChat(gid, chat);
+
+    return chat ?? null;
+}
+
+async function initUploadDragAndDrop(chatId) {
+    var uploadObject = getInnerChatContentElement(chatId);
+    if(!uploadObject) return console.warn("No drag and drop supported as element wasnt found");
+
+    let targetGid = uploadObject.getAttribute("data-chatid");
+    let targetHomeServer = uploadObject.getAttribute("data-homeserver");
+
+    let currentChat = await Client().GetChat(chatId);
+    if(!currentChat) return console.warn("No current chat found");
+
+    let targetPublicKey = currentChat?.publicKey;
+    if(!targetPublicKey) return console.warn("No target publicKey found");
+
+    if(!targetGid || !targetHomeServer) return console.error("NO targetGid OR targetHomeServer FOUND");
+
+    // Handle the file drop event
+    uploadObject.addEventListener('drop', async function (e) {
+        e.preventDefault();
+        uploadObject.style.backgroundColor = '';
+
+        const files = Array.from(e.dataTransfer.files); // Handle multiple files if needed
+        const fileSize = files[0].size / 1024 / 1024; // Example: Display the size of the first file
+        console.log(`File dropped. Size: ${fileSize.toFixed(2)} MB`);
+
+        try {
+            let homeServerAddress = await getHomeSocket().host;
+            let homeServerProtocol = getProtocol(homeServerAddress);
+            let addressFinished = `${homeServerProtocol}://${homeServerAddress}`;
+
+            let result = await FileManager.uploadFile(files, {
+                authObj: {
+                    "x-session-id": encodeURIComponent(await getSessionIdFromHost(await getHomeSocket().host)),
+                    "x-public-key": encodeURIComponent(await Client().GetPublicKey()),
+                },
+                host: addressFinished
+            })
+            console.log("upload result: ", result);
+
+            if (result.ok === true) {
+                console.log("All files uploaded successfully. URLs:", result.path);
+
+                // Process the URLs array
+                await sendMessage(getFixedUrl(homeServerAddress, result?.path), targetPublicKey, targetHomeServer)
+            } else {
+                console.error("Upload encountered an error:", result.error);
+            }
+        } catch (error) {
+            console.error("An error occurred during the upload process:", error);
+        }
+    }, false);
+
+
+    uploadObject.addEventListener('dragenter', function (e) {
+        e.preventDefault();
+        uploadObject.style.backgroundColor = 'gray';
+
+    }, false);
+
+    uploadObject.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        uploadObject.style.backgroundColor = 'gray';
+    }, false);
+
+    uploadObject.addEventListener('dragleave', function (e) {
+        e.preventDefault();
+        uploadObject.style.backgroundColor = '';
+    }, false);
 }
 
 async function startNewChat({
@@ -909,30 +1065,33 @@ async function startNewChat({
         // ok lets assume there were no errors then
         if (testMessage?.target?.publicKey) {
             let targetGid = await Client().GenerateGid(testMessage.target.publicKey);
+            let homeServer = extractHost(testMessage.target?.home_server ?? host);
 
             // some more tests
             if (!targetGid) throw new Error("Couldnt generate target gid");
             if (targetGid !== testMessage.target?.gid) throw new Error("Calculated GID and given GID doesnt match");
 
-            let existingChat = await Client().GetChat(targetGid);
+            let existingChat = await updateChatProfileData(homeServer, targetGid)
+
             if (existingChat?.data?.gid || existingChat?.gid) {
                 await renderChat(targetGid);
             } else {
-                let homeServer = extractHost(testMessage.target?.home_server);
 
                 let newChat = {
                     publicKey: testMessage.target?.publicKey,
                     gid: targetGid,
-                    title: testMessage?.name ?? `New Chat`,
+                    title: existingChat?.title ?? testMessage?.name ?? `New Chat`,
                     host: homeServer,
                     home_server: homeServer,
                     lastMessage: null,
                     lastRead: new Date().getTime(),
-                    icon: testMessage?.icon ?? null,
+                    icon: existingChat?.icon ?? testMessage?.icon ?? null,
+                    banner: existingChat?.banner ?? null,
                 };
 
                 await Client().SaveChat(targetGid, newChat);
-                await renderChat(null, newChat);
+                await renderMessages()
+                await renderChat(targetGid, newChat);
             }
         }
 
